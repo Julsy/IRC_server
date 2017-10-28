@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"container/list"
 )
 
 func (c *ClientChat) sendmsg(prefix string, command string, params ...string) {
@@ -10,7 +11,7 @@ func (c *ClientChat) sendmsg(prefix string, command string, params ...string) {
 	for _, v := range params {
 		msg = msg + " " + v;
 	}
-	c.IN <- msg;
+	c.In <- msg;
 }
 
 func (c *ClientChat) Close() {
@@ -30,18 +31,8 @@ func (c *ClientChat) delete() {
 	}
 	for i := c.ListChain.Front(); i != nil; i = i.Next() {
 		channel := i.Value.(ChannelChat);
-		channel.removeuser(c);
+		channel.deluser(c);
 	}
-}
-
-func (c *ClientChat) sendmsg(prefix string, command string, params ...string) {
-	var msg string;
-
-	msg = fmt.Sprintf(":%s %s", prefix, command);
-	for _, v := range params {
-		msg = msg + " " + v;
-	}
-	c.IN <- msg;
 }
 
 func (c *ClientChat) channel_add(name string) *ChannelChat {
@@ -52,31 +43,32 @@ func (c *ClientChat) channel_add(name string) *ChannelChat {
 			return &ch;
 		}
 	}
-	ch := &ChannelChat{
+	ch := &ChannelChat {
 		Name:	name,
-		UserList:	list.New()
+		UsersList:	list.New(),
 	};
 	c.ListChannel.PushBack(*ch);
 	fmt.Println("Created channel ", name);
+	return ch;
 }
 
 func (ch *ChannelChat) adduser(user *ClientChat) {
-	ch.UserList.PushBack(*user);
+	ch.UsersList.PushBack(*user);
 }
 
 func (ch *ChannelChat) deluser(user *ClientChat) {
-	for i := ch.UserList.Front(); i != nil; i = i.Next() {
+	for i := ch.UsersList.Front(); i != nil; i = i.Next() {
 		client := i.Value.(ClientChat);
 		if user.Conn == client.Conn {
-			ch.UserList.Remove(i);
+			ch.UsersList.Remove(i);
 			ch.updatelist();
 		}
 	}
 }
 
 func (ch *ChannelChat) updatelist() {
-	for i := i.UserList.Front(); i != nil; i = i.Next() {
-		client := cl.Value.(ClientChat);
+	for i := ch.UsersList.Front(); i != nil; i = i.Next() {
+		client := i.Value.(ClientChat);
 		send_list(&client, ch);
 	}
 }
