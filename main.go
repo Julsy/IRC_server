@@ -65,11 +65,11 @@ func cmd_NICK(client *ClientChat, params []string) {
 	// 		return ;
 	// 	}
 	// }
-	if (client.Name != "") {
-		fmt.Printf("Setting Nick (%s) to %s\n", client.Name, params[0])
-	}
+	// if (client.Name != "") {
+	// 	fmt.Printf("Setting Nick (%s) to %s\n", client.Name, params[0])
+	// }
 	client.Name = params[0];
-	fmt.Printf("Nick to set %s (%s)", client.Name, params[0]);
+	fmt.Printf("Nick to set %s (%s)\n", client.Name, params[0]);
 }
 
 func cmd_USER(client *ClientChat, params []string) {
@@ -113,22 +113,12 @@ func client_recv(client *ClientChat) {
             fmt.Println("GET: ", msg);
             command := strings.ToUpper(strings.Split(msg, " ")[0]);
             params := strings.Split(msg, " ")[1:]
-			for i := client.ListChain.Front(); i != nil; i = i.Next() {
-				fmt.Printf("Hola my name is %s\n", i.Value.(ClientChat).Name);
-				if i.Value.(ClientChat).Name == command {
-					fmt.Println("Hi I got here, my name is ", command);
-					if (len(params) >= 2 && client.nick_open(params[1])) {
-						c := i.Value.(ClientChat);
-						c.Name = params[1];
-						fmt.Printf("Nick is set! (%s -> %s)\n", command, i.Value.(ClientChat).Name);
-						// Do we send an updated client list? THe world may never know
-					}
-					return ;
-				}
-			}
             cmd, found := command_list[command]
             if found {
                 cmd(client, params);
+				fmt.Println("NIck was actually set to = ", client.Name);
+				rails := client.ListChain.Back().Value.(ClientChat);
+				fmt.Println("First user online is = ", rails.Name);
             } else {
                 fmt.Println("MSG: Unknown Message >>>", msg);
             }
@@ -152,18 +142,15 @@ func send_list (client *ClientChat, ch *ChannelChat) {
 }
 
 func client_send(client *ClientChat) {
-    fmt.Println("client_send(): start for: ", client.Name);
-    for {
-        fmt.Println("client_send(): wait for input to send");
-        select {
-		case buf := <- client.In:
-				fmt.Println("SEND:", buf)
-                client.Conn.Write([]byte(buf + "\r\n"));
-            case <-client.Quit:
-                break;
-        }
-    }
-    fmt.Println("client_send(): stop for: ", client.Name);
+	for {
+		select {
+			case buf := <- client.In :
+				client.Conn.Write([]byte(buf + "\r\n"));
+			case <-client.Quit:
+				break;
+		}
+	}
+	fmt.Printf("client_send() exited.\n");
 }
 
 func clientHandle(conn net.Conn, userList *list.List, channellist *list.List) {
@@ -176,9 +163,16 @@ func clientHandle(conn net.Conn, userList *list.List, channellist *list.List) {
 		userList,
 		channellist,
 	};
-	go client_send(newclient);
-	go client_recv(newclient);
 	userList.PushBack(*newclient);
+	c := userList.Back().Value.(ClientChat);
+	c.Name = "hi";
+	fmt.Println("My name is = ", c.Name);
+	newclient.Name = "Rails is Garbage";
+	fmt.Println("My name is = ", newclient.Name);
+	fmt.Println("My name is = ", c.Name);
+	// fmt.Printf("newclient = %p userList.Back() = %p\n", newclient, userList.Back().Value)
+	go client_send(&c);
+	go client_recv(&c);
 }
 
 func main() {
