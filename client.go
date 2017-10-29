@@ -43,9 +43,16 @@ func (c *ClientChat) channel_add(name string) *ChannelChat {
 			return &ch
 		}
 	}
+	s := make([]string, 1)
+	s[0] = *c.Name
+
+	i := 0
+
 	ch := &ChannelChat{
-		Name:      name,
-		UsersList: list.New(),
+		Name:       name,
+		UsersList:  list.New(),
+		Moderators: s,
+		Visible:    &i,
 	}
 	c.ListChannel.PushBack(*ch)
 	fmt.Println("Created channel ", name)
@@ -54,6 +61,8 @@ func (c *ClientChat) channel_add(name string) *ChannelChat {
 
 func (ch *ChannelChat) adduser(user *ClientChat) {
 	ch.UsersList.PushBack(*user)
+	*ch.Visible++
+	fmt.Printf("Visible = %d\n", ch.Visible)
 }
 
 func (ch *ChannelChat) deluser(user *ClientChat) {
