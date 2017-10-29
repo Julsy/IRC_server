@@ -34,16 +34,15 @@ type ChannelChat struct {
 var passwords = map[string]string{}
 
 var command_list = map[string]func(*ClientChat, []string){
-	"NICK":     cmd_NICK,
-	"USER":     cmd_USER,
-	"JOIN":     cmd_JOIN,
-	"REGISTER": cmd_REGISTER,
-	"LOGIN":    cmd_LOGIN,
-	"PRIVMSG":  cmd_PRIVMSG,
-	"QUIT":     cmd_QUIT,
-	"PASS":     cmd_PASS,
-	"KICK":     cmd_KICK, // Parameters: <channel> <user>
-	"LIST":     cmd_LIST,
+	"NICK":    cmd_NICK,
+	"USER":    cmd_USER,
+	"JOIN":    cmd_JOIN,
+	"LOGIN":   cmd_LOGIN,
+	"PRIVMSG": cmd_PRIVMSG,
+	"QUIT":    cmd_QUIT,
+	"PASS":    cmd_PASS,
+	"KICK":    cmd_KICK, // Parameters: <channel> <user>
+	"LIST":    cmd_LIST,
 	// "TOPIC": cmd_TOPIC,
 	// "PING":	cmd_PING,
 	// "PART": cmd_PART,
@@ -78,6 +77,13 @@ var command_list = map[string]func(*ClientChat, []string){
 !!!	4th Fix formatting messages to client
 !!! You have to be able to use any IRC client to connect and test the
 !!! functionality of your server.
+
+PREFIX - SERVER NAME???
+**How to connect normally **
+telnet irc.freenode.net 6667
+NICK randomuser29
+USER randomuser29 * * :TestMe
+** end how to connect **
 **
 */
 
@@ -97,17 +103,23 @@ func cmd_LOGIN(client *ClientChat, params []string) {
 	}
 }
 
-func cmd_REGISTER(client *ClientChat, params []string) {
-	if len(params) != 2 {
+func cmd_USER(client *ClientChat, params []string) {
+	if len(params) < 4 {
 		client.sendmsg("", "461", "REGISTER", ":Not enough parameters")
 		return
 	}
+
+	// if pass, ok := passwords
+
 	if _, ok := passwords[params[0]]; ok {
 		client.sendmsg("", "462", "You may not reregister")
 		return
 	}
 	passwords[params[0]] = params[1]
 	fmt.Printf("User %s set password to %s\n", params[0], passwords[params[0]])
+	client.sendmsg("", "375", *client.Name, "-:- Message of the day - ")
+	client.sendmsg("", "372", *client.Name, ":- We da cooliest")
+	client.sendmsg("", "376", *client.Name, ":End of /MOTD command")
 }
 
 func cmd_PASS(client *ClientChat, params []string) {
@@ -142,12 +154,6 @@ func cmd_NICK(client *ClientChat, params []string) {
 	}
 	*client.Name = params[0]
 	fmt.Printf("Nick to set %s (%s)\n", *client.Name, params[0])
-}
-
-func cmd_USER(client *ClientChat, params []string) {
-	client.sendmsg("", "375", *client.Name, "-:- Message of the day - ")
-	client.sendmsg("", "372", *client.Name, ":- We da cooliest")
-	client.sendmsg("", "376", *client.Name, ":End of /MOTD command")
 }
 
 func cmd_LIST(client *ClientChat, params []string) {
@@ -257,8 +263,10 @@ func cmd_PRIVMSG(client *ClientChat, params []string) {
 			}
 			fmt.Printf("%s -> %s with message \"%s\"\n", *client.Name, *u.Name, totalmesasge)
 			u.sendmsg(*client.Name, "PRIVMSG", *u.Name, totalmesasge)
+			return
 		}
 	}
+	client.sendmsg("", "401", *client.Name, params[0], ":No such nick/channel")
 }
 
 func client_recv(client *ClientChat) {

@@ -7,7 +7,7 @@ import (
 
 func (c *ClientChat) sendmsg(prefix string, command string, params ...string) {
 	var msg string
-	msg = fmt.Sprintf(": %s %s", prefix, command)
+	msg = fmt.Sprintf(":%s %s", prefix, command)
 	for _, v := range params {
 		msg = msg + " " + v
 	}
