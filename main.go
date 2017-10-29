@@ -68,6 +68,7 @@ func cmd_NICK(client *ClientChat, params []string) {
 	// if (client.Name != "") {
 	// 	fmt.Printf("Setting Nick (%s) to %s\n", client.Name, params[0])
 	// }
+	fmt.Printf("In nickset(%p)\n", client);
 	client.Name = params[0];
 	fmt.Printf("Nick to set %s (%s)\n", client.Name, params[0]);
 }
@@ -79,15 +80,14 @@ func cmd_USER(client *ClientChat, params []string) {
 }
 
 func cmd_JOIN(client *ClientChat, params []string) {
-	/*
-	** Too Tired for this rn lmao -
-	** We need to essentially send the JOIN message (https://tools.ietf.org/html/rfc1459#section-4.2.1)
-	** we then need to add user to the channel via first checking if the channel exists (channel_add())
-	** Then adding the user to it via adduser();
-	** We then need to send the connected client list as well as the channel TOPIC.
-	** We then need to send an updated connected client list to all clients currently connected
-	** IE: itterate through UsersLists and do send_list() with the addresss of current and the current channel
-	*/
+    channel := client.channel_add(params[0]);
+    channel.adduser(client);
+    client.sendmsg("", 332, ch.Name, " :", ch.Topic);
+    send_list(client, channel);
+    for i := channel.UsersLists.Front(); i != nil; i = i.Next() {
+        c := i.Value.(ClientChat);
+        send_list(c, channel);
+    }
 }
 
 func (c *ClientChat) nick_open(nickname string) (bool) {
@@ -97,6 +97,15 @@ func (c *ClientChat) nick_open(nickname string) (bool) {
 		}
 	}
 	return false;
+}
+
+func list_all(client *ClientChat) {
+	fmt.Println("=================== Listing all Users ===============")
+	for i := client.ListChain.Front(); i != nil; i = i.Next() {
+		c := i.Value.(ClientChat);
+		fmt.Printf("(%p) %s - %s\n", &c, c.Conn.LocalAddr().String(), c.Name);
+	}
+	fmt.Println("=====================================================");
 }
 
 func client_recv(client *ClientChat) {
@@ -116,9 +125,7 @@ func client_recv(client *ClientChat) {
             cmd, found := command_list[command]
             if found {
                 cmd(client, params);
-				fmt.Println("NIck was actually set to = ", client.Name);
-				rails := client.ListChain.Back().Value.(ClientChat);
-				fmt.Println("First user online is = ", rails.Name);
+				list_all(client);
             } else {
                 fmt.Println("MSG: Unknown Message >>>", msg);
             }
@@ -155,7 +162,7 @@ func client_send(client *ClientChat) {
 
 func clientHandle(conn net.Conn, userList *list.List, channellist *list.List) {
 	newclient := &ClientChat {
-		"",
+		"Test",
 		make(chan string),
 		make(chan string),
 		conn,
@@ -165,14 +172,10 @@ func clientHandle(conn net.Conn, userList *list.List, channellist *list.List) {
 	};
 	userList.PushBack(*newclient);
 	c := userList.Back().Value.(ClientChat);
-	c.Name = "hi";
-	fmt.Println("My name is = ", c.Name);
-	newclient.Name = "Rails is Garbage";
-	fmt.Println("My name is = ", newclient.Name);
-	fmt.Println("My name is = ", c.Name);
 	// fmt.Printf("newclient = %p userList.Back() = %p\n", newclient, userList.Back().Value)
 	go client_send(&c);
 	go client_recv(&c);
+	list_all(newclient);
 }
 
 func main() {
