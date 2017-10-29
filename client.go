@@ -70,6 +70,7 @@ func (ch *ChannelChat) deluser(user *ClientChat) {
 		client := i.Value.(ClientChat)
 		if user.Conn == client.Conn {
 			ch.UsersList.Remove(i)
+			*ch.Visible--;
 			ch.updatelist()
 		}
 	}

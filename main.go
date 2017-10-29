@@ -44,8 +44,8 @@ var command_list = map[string]func(*ClientChat, []string){
 	"KICK":    cmd_KICK, // Parameters: <channel> <user>
 	"LIST":    cmd_LIST,
 	// "TOPIC": cmd_TOPIC,
-	// "PING":	cmd_PING,
-	// "PART": cmd_PART,
+	"PING":	cmd_PING,
+	"PART": cmd_PART,
 }
 
 /*
@@ -87,6 +87,11 @@ USER randomuser29 * * :TestMe
 **
 */
 
+/*
+** When a client quits immediately, we need to remove it from all the channels it was connnected to
+** This can happen from someone Force Killing their IRC client!!!
+*/
+
 func cmd_LOGIN(client *ClientChat, params []string) {
 	if len(params) != 2 {
 		client.sendmsg("", "461", "LOGIN", ":Not enough parameters")
@@ -103,6 +108,21 @@ func cmd_LOGIN(client *ClientChat, params []string) {
 	}
 }
 
+func cmd_PING(client *ClientChat, params []string) {
+	client.sendmsg("", "PONG")
+}
+
+func cmd_PART(client *ClientChat, params []string) {
+	if len(params) == 0 {
+		client.sendmsg("", "461", "PART", ":Not enough parameters")
+		return
+	}
+	if params[0][0] == '#' {
+		channel := client.channel_add(params[0]);
+		channel.deluser(client);
+	}
+}
+
 func cmd_USER(client *ClientChat, params []string) {
 	if len(params) < 4 {
 		client.sendmsg("", "461", "REGISTER", ":Not enough parameters")
@@ -115,8 +135,8 @@ func cmd_USER(client *ClientChat, params []string) {
 		client.sendmsg("", "462", "You may not reregister")
 		return
 	}
-	passwords[params[0]] = params[1]
-	fmt.Printf("User %s set password to %s\n", params[0], passwords[params[0]])
+	// passwords[params[0]] = params[1]
+	// fmt.Printf("User %s set password to %s\n", params[0], passwords[params[0]])
 	client.sendmsg("", "375", *client.Name, "-:- Message of the day - ")
 	client.sendmsg("", "372", *client.Name, ":- We da cooliest")
 	client.sendmsg("", "376", *client.Name, ":End of /MOTD command")
@@ -135,6 +155,7 @@ func cmd_PASS(client *ClientChat, params []string) {
 }
 
 func cmd_QUIT(client *ClientChat, params []string) {
+	client.sendmsg("", "QUIT", ":Quit");
 	client.Close()
 	fmt.Printf("Bye felicia\n")
 }
@@ -177,12 +198,34 @@ func list_channels(client *ClientChat) {
 }
 
 // FIX ME
+/*
+**
+:Julia!~Julia@192.168.0.103 JOIN :#channel
+:192.168.0.103 353 Julia = #channel :Julia 
+:192.168.0.103 366 Julia #channel :End of /NAMES list.
+:192.168.0.103 332 Julia #channel :
+:192.168.0.103 353 Julia = #channel :Julia 
+:192.168.0.103 366 Julia #channel :End of /NAMES list.
+
+vs
+
+:Julia!~Julia@ JOIN :#channel
+: 332 Julia #channel :
+: 353 #channel :Julia 
+: 366 #channel :End of /NAMES list
+
+*/
 func cmd_JOIN(client *ClientChat, params []string) {
-	channel := client.channel_add(params[0])
+	c := params[0];
+	if c[0] != '#' {
+		c = "#" + c;
+	}
+	channel := client.channel_add(c)
 	if is_inchannel(channel, client) == false {
 		channel.adduser(client)
+		client.sendmsg(fmt.Sprintf("%s!~%s@", *client.Name, *client.Name), "JOIN", fmt.Sprintf(":%s", channel.Name))
 		fmt.Printf("Channel has visible %d\n", *channel.Visible)
-		client.sendmsg("", "332", *client.Name, ":", channel.Topic)
+		client.sendmsg("", "332", *client.Name, channel.Name, fmt.Sprintf(":%s", channel.Topic))
 		for i := channel.UsersList.Front(); i != nil; i = i.Next() {
 			c := i.Value.(ClientChat)
 			send_list(&c, channel)
@@ -249,20 +292,46 @@ func list_all(client *ClientChat) {
 	fmt.Println("=====================================================")
 }
 
+
+func (ch *ChannelChat) chan_msg(client *ClientChat, msg string) {
+	for i := ch.UsersList.Front(); i != nil; i = i.Next() {
+		c := i.Value.(ClientChat);
+		//Can't send to himself
+		if *c.Name != *client.Name {
+			c.sendmsg(fmt.Sprintf("%s!%s@%s", *client.Name, *client.Name, client.Conn.RemoteAddr()), "PRIVMSG", ch.Name, msg);
+		}
+	}
+}
+
+/*
+** So this apparently handles both PRIVATE messages and channel messages? tf?
+** w0w
+**
+*/
 func cmd_PRIVMSG(client *ClientChat, params []string) {
 	if len(params) < 2 {
 		client.sendmsg("", "461", "PRIVMSG", ":Not enough parameters")
 		return
 	}
+	receiver := params[0];
+	if receiver[0] == '#' {
+		channel := client.channel_add(receiver);
+		totalmesasge := ""
+		for pi := 1; pi < len(params); pi++ {
+			totalmesasge += params[pi] + " ";
+		}
+		channel.chan_msg(client, totalmesasge)
+		return ;
+	}
 	for i := client.ListChain.Front(); i != nil; i = i.Next() {
 		u := i.Value.(ClientChat)
-		if *u.Name == params[0] {
+		if *u.Name == receiver {
 			totalmesasge := ""
 			for pi := 1; pi < len(params); pi++ {
 				totalmesasge += params[pi] + " "
 			}
 			fmt.Printf("%s -> %s with message \"%s\"\n", *client.Name, *u.Name, totalmesasge)
-			u.sendmsg(*client.Name, "PRIVMSG", *u.Name, totalmesasge)
+			u.sendmsg(fmt.Sprintf("%s!~%s@", *client.Name, *client.Name), "PRIVMSG", *u.Name, totalmesasge);
 			return
 		}
 	}
@@ -310,8 +379,8 @@ func send_list(client *ClientChat, ch *ChannelChat) {
 		c := i.Value.(ClientChat)
 		namereply += *c.Name + " "
 	}
-	client.sendmsg("", "353", ch.Name, fmt.Sprintf(":%s", namereply))
-	client.sendmsg("", "366", ch.Name, ":End of /NAMES list")
+	client.sendmsg("", "353", *client.Name, "=", ch.Name, fmt.Sprintf(":%s", namereply))
+	client.sendmsg("", "366", *client.Name, ch.Name, ":End of /NAMES list")
 }
 
 func client_send(client *ClientChat) {
