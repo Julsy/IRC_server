@@ -43,6 +43,7 @@ var command_list = map[string]func(*ClientChat, []string){
 	"PASS":    cmd_PASS,
 	"KICK":    cmd_KICK, // Parameters: <channel> <user>
 	"LIST":    cmd_LIST,
+	"UPASS":	cmd_UPASS,
 	// "TOPIC": cmd_TOPIC,
 	"PING":	cmd_PING,
 	"PART": cmd_PART,
@@ -100,11 +101,40 @@ func cmd_LOGIN(client *ClientChat, params []string) {
 	if val, ok := passwords[params[0]]; ok {
 		if params[1] == val {
 			fmt.Printf("Logged in as %s (%s)\n", params[0], val)
+			client.LoggedIn = true;
 		} else {
 			client.sendmsg("", "464", ":Password incorrect")
 		}
 	} else {
 		client.sendmsg("", "451", ":You have not registered")
+	}
+}
+
+/*
+** UPASS <password> <newpassword>
+*/
+
+func cmd_UPASS(client *ClientChat, params []string) {
+	if len(params) != 1 {
+		client.sendmsg("", "461", "UPASS", ":Not enough parameters")
+		return
+	}
+	if *client.Name != "" {
+		if val, ok := passwords[*client.Name];ok {
+			if params[0] == val && client.LoggedIn && len(params) >= 2 {
+				passwords[*client.Name] = params[1];
+				fmt.Printf("Set new pass as %s (%s)\n", params[1], passwords[*client.Name])
+			} else {
+				client.sendmsg("", "464", ":Password incorrect")
+			}
+		} else {
+			passwords[*client.Name] = params[0];
+		}
+	} else {
+		fmt.Printf("empty username? (\"%s\"", *client.Name);
+		client.sendmsg("", "432", *client.Name, ":Erroneus nickname");
+    // 431     ERR_NONICKNAMEGIVEN
+    //                     ":No nickname given"
 	}
 }
 
@@ -179,6 +209,10 @@ func cmd_NICK(client *ClientChat, params []string) {
 
 func cmd_LIST(client *ClientChat, params []string) {
 	// client.In <- "Channel :Users  Name"
+	if client.LoggedIn == false {
+		client.sendmsg("", "444", *client.Name, ":User not logged in")
+		return ;
+	}
 	client.sendmsg("", "321", "*", "LIST", "Channel :Users  Name")
 	for i := client.ListChannel.Front(); i != nil; i = i.Next() {
 		ch := i.Value.(ChannelChat)
@@ -220,6 +254,10 @@ func cmd_JOIN(client *ClientChat, params []string) {
 	if c[0] != '#' {
 		c = "#" + c;
 	}
+	if client.LoggedIn == false {
+		client.sendmsg("", "444", *client.Name, ":User not logged in")
+		return ;
+	}
 	channel := client.channel_add(c)
 	if is_inchannel(channel, client) == false {
 		channel.adduser(client)
@@ -257,6 +295,10 @@ func cmd_KICK(client *ClientChat, params []string) {
 	if len(params) == 0 {
 		client.sendmsg("", "461", "PASS", ":Not enough parameters")
 		return
+	}
+	if client.LoggedIn == false {
+		client.sendmsg("", "444", *client.Name, ":User not logged in")
+		return ;
 	}
 	for i := client.ListChannel.Front(); i != nil; i = i.Next() {
 		c := i.Value.(ChannelChat)
@@ -313,6 +355,10 @@ func cmd_PRIVMSG(client *ClientChat, params []string) {
 		client.sendmsg("", "461", "PRIVMSG", ":Not enough parameters")
 		return
 	}
+	if client.LoggedIn == false {
+		client.sendmsg("", "444", *client.Name, ":User not logged in")
+		return ;
+	}
 	receiver := params[0];
 	if receiver[0] == '#' {
 		channel := client.channel_add(receiver);
@@ -325,7 +371,7 @@ func cmd_PRIVMSG(client *ClientChat, params []string) {
 	}
 	for i := client.ListChain.Front(); i != nil; i = i.Next() {
 		u := i.Value.(ClientChat)
-		if *u.Name == receiver {
+		if *u.Name == receiver && u.LoggedIn {
 			totalmesasge := ""
 			for pi := 1; pi < len(params); pi++ {
 				totalmesasge += params[pi] + " "
