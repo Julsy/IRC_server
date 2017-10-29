@@ -109,7 +109,7 @@ func cmd_USER(client *ClientChat, params []string) {
 		return
 	}
 
-	// if pass, ok := passwords
+	// 462     ERR_ALREADYREGISTRED  ":You may not reregister"
 
 	if _, ok := passwords[params[0]]; ok {
 		client.sendmsg("", "462", "You may not reregister")
