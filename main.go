@@ -44,6 +44,7 @@ var command_list = map[string]func(*ClientChat, []string){
 	"KICK":    cmd_KICK, // Parameters: <channel> <user>
 	"LIST":    cmd_LIST,
 	"UPASS":	cmd_UPASS,
+	"NAMES":	cmd_NAMES,
 	// "TOPIC": cmd_TOPIC,
 	"PING":	cmd_PING,
 	"PART": cmd_PART,
@@ -87,6 +88,16 @@ USER randomuser29 * * :TestMe
 ** end how to connect **
 **
 */
+
+func cmd_NAMES(client *ClientChat, params []string) {
+	totalnames := ""
+	for i := client.ListChain.Front(); i != nil; i = i.Next() {
+		c := i.Value.(ClientChat)
+		totalnames = totalnames + *c.Name + " "
+	}
+	client.sendmsg("", "353", totalnames);
+	client.sendmsg("", "366", ":End of /NAMES list")
+}
 
 /*
 ** When a client quits immediately, we need to remove it from all the channels it was connnected to
