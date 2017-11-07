@@ -1,26 +1,42 @@
 package main
 
+/*
+To test:
+go run *.go
+
+New terminal window:
+telnet localhost 1337
+
+PASS supersecret
+NICK Julia
+UPASS 123
+LOGIN Julia 123
+JOIN #channel
+
+
+*/
+
 import (
 	"container/list"
 	"flag"
 	"fmt"
 	"net"
 	"strings"
-	// "errors"
 )
 
 const server_pass string = "supersecret"
 
 type ClientChat struct {
-	Name        *string
-	In          chan string
-	Out         chan string
-	Conn        net.Conn
-	Quit        chan bool
-	ListChain   *list.List
-	ListChannel *list.List
-	Auth        bool
-	LoggedIn    bool
+	Name           *string
+	In             chan string
+	Out            chan string
+	Conn           net.Conn
+	Quit           chan bool
+	ListChain      *list.List
+	ListChannel    *list.List
+	Auth           bool
+	LoggedIn       bool
+	LoggedIn_deref *bool
 }
 
 type ChannelChat struct {
@@ -43,50 +59,18 @@ var command_list = map[string]func(*ClientChat, []string){
 	"PASS":    cmd_PASS,
 	"KICK":    cmd_KICK, // Parameters: <channel> <user>
 	"LIST":    cmd_LIST,
-	"UPASS":	cmd_UPASS,
-	"NAMES":	cmd_NAMES,
-	// "TOPIC": cmd_TOPIC,
-	"PING":	cmd_PING,
-	"PART": cmd_PART,
+	"UPASS":   cmd_UPASS,
+	"NAMES":   cmd_NAMES,
+	"PING":    cmd_PING,
+	"PART":    cmd_PART,
 }
 
 /*
-** Connection for some reason fails when unexpected quit of a client
-** Due to removing a user who already is gone.
-**
-		panic: interface conversion: interface {} is main.ClientChat, not main.ChannelChat
-
-		goroutine 10 [running]:
-		main.(*ClientChat).delete(0xc420080500)
-			/Users/julsy/Work/Study/GO/Frozen/client.go:33 +0x3e9
-		main.(*ClientChat).Close(0xc420080500)
-			/Users/julsy/Work/Study/GO/Frozen/client.go:20 +0x70
-		main.cmd_QUIT(0xc420080500, 0xc42005a080, 0x6, 0x6)
-			/Users/julsy/Work/Study/GO/Frozen/main.go:95 +0x2b
-		main.client_recv(0xc420080500)
-			/Users/julsy/Work/Study/GO/Frozen/main.go:191 +0x39d
-		created by main.clientHandle
-			/Users/julsy/Work/Study/GO/Frozen/main.go:247 +0x285
-		exit status 2
-**
-
-** #2nd bug
-** Empty message panics, sanitize inputs.
-
-** 3rd Set a Topic
-
-!!!
-!!!	4th Fix formatting messages to client
-!!! You have to be able to use any IRC client to connect and test the
-!!! functionality of your server.
-
-PREFIX - SERVER NAME???
 **How to connect normally **
 telnet irc.freenode.net 6667
 NICK randomuser29
 USER randomuser29 * * :TestMe
 ** end how to connect **
-**
 */
 
 func cmd_NAMES(client *ClientChat, params []string) {
@@ -95,14 +79,9 @@ func cmd_NAMES(client *ClientChat, params []string) {
 		c := i.Value.(ClientChat)
 		totalnames = totalnames + *c.Name + " "
 	}
-	client.sendmsg("", "353", totalnames);
+	client.sendmsg("", "353", totalnames)
 	client.sendmsg("", "366", ":End of /NAMES list")
 }
-
-/*
-** When a client quits immediately, we need to remove it from all the channels it was connnected to
-** This can happen from someone Force Killing their IRC client!!!
-*/
 
 func cmd_LOGIN(client *ClientChat, params []string) {
 	if len(params) != 2 {
@@ -112,7 +91,8 @@ func cmd_LOGIN(client *ClientChat, params []string) {
 	if val, ok := passwords[params[0]]; ok {
 		if params[1] == val {
 			fmt.Printf("Logged in as %s (%s)\n", params[0], val)
-			client.LoggedIn = true;
+			client.LoggedIn = true
+			*client.LoggedIn_deref = true
 		} else {
 			client.sendmsg("", "464", ":Password incorrect")
 		}
@@ -121,31 +101,25 @@ func cmd_LOGIN(client *ClientChat, params []string) {
 	}
 }
 
-/*
-** UPASS <password> <newpassword>
-*/
-
 func cmd_UPASS(client *ClientChat, params []string) {
 	if len(params) != 1 {
 		client.sendmsg("", "461", "UPASS", ":Not enough parameters")
 		return
 	}
 	if *client.Name != "" {
-		if val, ok := passwords[*client.Name];ok {
+		if val, ok := passwords[*client.Name]; ok {
 			if params[0] == val && client.LoggedIn && len(params) >= 2 {
-				passwords[*client.Name] = params[1];
+				passwords[*client.Name] = params[1]
 				fmt.Printf("Set new pass as %s (%s)\n", params[1], passwords[*client.Name])
 			} else {
 				client.sendmsg("", "464", ":Password incorrect")
 			}
 		} else {
-			passwords[*client.Name] = params[0];
+			passwords[*client.Name] = params[0]
 		}
 	} else {
-		fmt.Printf("empty username? (\"%s\"", *client.Name);
-		client.sendmsg("", "432", *client.Name, ":Erroneus nickname");
-    // 431     ERR_NONICKNAMEGIVEN
-    //                     ":No nickname given"
+		fmt.Printf("empty username? (\"%s\"", *client.Name)
+		client.sendmsg("", "432", *client.Name, ":Erroneus nickname")
 	}
 }
 
@@ -159,8 +133,8 @@ func cmd_PART(client *ClientChat, params []string) {
 		return
 	}
 	if params[0][0] == '#' {
-		channel := client.channel_add(params[0]);
-		channel.deluser(client);
+		channel := client.channel_add(params[0])
+		channel.deluser(client)
 	}
 }
 
@@ -169,15 +143,10 @@ func cmd_USER(client *ClientChat, params []string) {
 		client.sendmsg("", "461", "REGISTER", ":Not enough parameters")
 		return
 	}
-
-	// 462     ERR_ALREADYREGISTRED  ":You may not reregister"
-
 	if _, ok := passwords[params[0]]; ok {
 		client.sendmsg("", "462", "You may not reregister")
 		return
 	}
-	// passwords[params[0]] = params[1]
-	// fmt.Printf("User %s set password to %s\n", params[0], passwords[params[0]])
 	client.sendmsg("", "375", *client.Name, "-:- Message of the day - ")
 	client.sendmsg("", "372", *client.Name, ":- We da cooliest")
 	client.sendmsg("", "376", *client.Name, ":End of /MOTD command")
@@ -196,7 +165,7 @@ func cmd_PASS(client *ClientChat, params []string) {
 }
 
 func cmd_QUIT(client *ClientChat, params []string) {
-	client.sendmsg("", "QUIT", ":Quit");
+	client.sendmsg("", "QUIT", ":Quit")
 	client.Close()
 	fmt.Printf("Bye felicia\n")
 }
@@ -219,10 +188,9 @@ func cmd_NICK(client *ClientChat, params []string) {
 }
 
 func cmd_LIST(client *ClientChat, params []string) {
-	// client.In <- "Channel :Users  Name"
 	if client.LoggedIn == false {
 		client.sendmsg("", "444", *client.Name, ":User not logged in")
-		return ;
+		return
 	}
 	client.sendmsg("", "321", "*", "LIST", "Channel :Users  Name")
 	for i := client.ListChannel.Front(); i != nil; i = i.Next() {
@@ -242,32 +210,14 @@ func list_channels(client *ClientChat) {
 	fmt.Println("*****************************************************")
 }
 
-// FIX ME
-/*
-**
-:Julia!~Julia@192.168.0.103 JOIN :#channel
-:192.168.0.103 353 Julia = #channel :Julia 
-:192.168.0.103 366 Julia #channel :End of /NAMES list.
-:192.168.0.103 332 Julia #channel :
-:192.168.0.103 353 Julia = #channel :Julia 
-:192.168.0.103 366 Julia #channel :End of /NAMES list.
-
-vs
-
-:Julia!~Julia@ JOIN :#channel
-: 332 Julia #channel :
-: 353 #channel :Julia 
-: 366 #channel :End of /NAMES list
-
-*/
 func cmd_JOIN(client *ClientChat, params []string) {
-	c := params[0];
+	c := params[0]
 	if c[0] != '#' {
-		c = "#" + c;
+		c = "#" + c
 	}
 	if client.LoggedIn == false {
 		client.sendmsg("", "444", *client.Name, ":User not logged in")
-		return ;
+		return
 	}
 	channel := client.channel_add(c)
 	if is_inchannel(channel, client) == false {
@@ -309,7 +259,7 @@ func cmd_KICK(client *ClientChat, params []string) {
 	}
 	if client.LoggedIn == false {
 		client.sendmsg("", "444", *client.Name, ":User not logged in")
-		return ;
+		return
 	}
 	for i := client.ListChannel.Front(); i != nil; i = i.Next() {
 		c := i.Value.(ChannelChat)
@@ -345,22 +295,16 @@ func list_all(client *ClientChat) {
 	fmt.Println("=====================================================")
 }
 
-
 func (ch *ChannelChat) chan_msg(client *ClientChat, msg string) {
 	for i := ch.UsersList.Front(); i != nil; i = i.Next() {
-		c := i.Value.(ClientChat);
+		c := i.Value.(ClientChat)
 		//Can't send to himself
 		if *c.Name != *client.Name {
-			c.sendmsg(fmt.Sprintf("%s!%s@%s", *client.Name, *client.Name, client.Conn.RemoteAddr()), "PRIVMSG", ch.Name, msg);
+			c.sendmsg(fmt.Sprintf("%s!%s@%s", *client.Name, *client.Name, client.Conn.RemoteAddr()), "PRIVMSG", ch.Name, msg)
 		}
 	}
 }
 
-/*
-** So this apparently handles both PRIVATE messages and channel messages? tf?
-** w0w
-**
-*/
 func cmd_PRIVMSG(client *ClientChat, params []string) {
 	if len(params) < 2 {
 		client.sendmsg("", "461", "PRIVMSG", ":Not enough parameters")
@@ -368,27 +312,27 @@ func cmd_PRIVMSG(client *ClientChat, params []string) {
 	}
 	if client.LoggedIn == false {
 		client.sendmsg("", "444", *client.Name, ":User not logged in")
-		return ;
+		return
 	}
-	receiver := params[0];
+	receiver := params[0]
 	if receiver[0] == '#' {
-		channel := client.channel_add(receiver);
+		channel := client.channel_add(receiver)
 		totalmesasge := ""
 		for pi := 1; pi < len(params); pi++ {
-			totalmesasge += params[pi] + " ";
+			totalmesasge += params[pi] + " "
 		}
 		channel.chan_msg(client, totalmesasge)
-		return ;
+		return
 	}
 	for i := client.ListChain.Front(); i != nil; i = i.Next() {
 		u := i.Value.(ClientChat)
-		if *u.Name == receiver && u.LoggedIn {
+		if *u.Name == receiver && *u.LoggedIn_deref == true {
 			totalmesasge := ""
 			for pi := 1; pi < len(params); pi++ {
 				totalmesasge += params[pi] + " "
 			}
 			fmt.Printf("%s -> %s with message \"%s\"\n", *client.Name, *u.Name, totalmesasge)
-			u.sendmsg(fmt.Sprintf("%s!~%s@", *client.Name, *client.Name), "PRIVMSG", *u.Name, totalmesasge);
+			u.sendmsg(fmt.Sprintf("%s!~%s@", *client.Name, *client.Name), "PRIVMSG", *u.Name, totalmesasge)
 			return
 		}
 	}
@@ -454,6 +398,8 @@ func client_send(client *ClientChat) {
 
 func clientHandle(conn net.Conn, userList *list.List, channellist *list.List) {
 	var name string
+	var logged bool
+	logged = false
 
 	newclient := &ClientChat{
 		&name,
@@ -465,6 +411,7 @@ func clientHandle(conn net.Conn, userList *list.List, channellist *list.List) {
 		channellist,
 		false,
 		false,
+		&logged,
 	}
 	userList.PushBack(*newclient)
 	c := userList.Back().Value.(ClientChat)
